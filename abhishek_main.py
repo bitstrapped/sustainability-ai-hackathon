@@ -82,32 +82,17 @@ safety_settings = {
 }
 
 
+
 # LLM Model
 def generate_response(prompt):
+    # Placeholder function, replace with actual model call
     responses = model.generate_content(
         prompt,
         generation_config=generation_config,
         safety_settings=safety_settings,
         stream=False    
     )
-    return responses
-
-
-
-#------------------------------------
-
-test_prompt=["I want to design a PDF to JSON extractor using Gemini PRo. I want to use GCS for storage and vertex ai workbench. Suggest me the most efficient GCP solution stack to build this out"]
-
-combined_prompt = train_prompt+test_prompt
-print(combined_prompt)
-
-
-def main_gradio():
-    output_response = generate_response(combined_prompt)
-    output_text = output_response.text
-    return output_text
-
-# print(output_text)
+    return responses.text 
 
 
 
@@ -116,33 +101,36 @@ def main_gradio():
 '''
 ---------  GRADIO UI -----
 '''
-def handle_action(action, json_filename=""):
-    if action == "Generate Response":
-        return main_gradio()
-    else:
-        return "Invalid action."
-
-
+import gradio as gr
 import socket
+
+def main_gradio(user_prompt):
+    train_prompt = "Predefined training prompt or context information here."  # Adjust as needed
+    combined_prompt = train_prompt + " " + user_prompt
+    output_text = generate_response(combined_prompt)
+    return output_text
 
 def find_free_port():
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-        s.bind(("", 0))  # Bind to all interfaces and a free port chosen by the OS
+        s.bind(("", 0))
         s.listen(1)
-        port = s.getsockname()[1]  # Get the port number
+        port = s.getsockname()[1]
         return port
-    
+
 port = find_free_port()
-print(port)
+print(f"Using free port: {port}")
 
-# Create your Gradio UI interface
-combined_interface = gr.Interface(
-fn=handle_action,
-inputs=[
-    gr.Radio(["Generate Response"], label="Select Action")
-],
-outputs="text",
-title="Sustainable AI"
-)
+def gradio_ui():
+    with gr.Blocks() as demo:
+        gr.Markdown("### Enter your test prompt")
+        user_prompt = gr.Textbox(label="Test Prompt", placeholder="Enter your test prompt here...")
+        submit_button = gr.Button("Generate Response")
+        output_text = gr.Textbox(label="Output", placeholder="Output will appear here...")
 
-combined_interface.launch(server_name="0.0.0.0", server_port=57997)
+        submit_button.click(fn=main_gradio, inputs=user_prompt, outputs=output_text)
+
+    return demo
+
+if __name__ == "__main__":
+    interface = gradio_ui()
+    interface.launch(server_name="0.0.0.0", server_port=port)  # Use the dynamically found free port
