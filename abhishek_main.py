@@ -17,7 +17,7 @@ bucket_name = "sustainable-ai"
 
 
 # Paths
-train_folder = 'documents2/'
+train_folder = 'documents/'
 
 aiplatform.init(project=project_id, location=location)
 vertexai.init(project=project_id, location=location)
