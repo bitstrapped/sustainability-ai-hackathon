@@ -41,10 +41,9 @@ def list_train_folder_files(bucket, train_folder):
 # List PDF files and find corresponding JSON output files
 train_pdf_list = list_train_folder_files(bucket_name, train_folder)
 
-# Construct the prompt for each input and its corresponding output JSON
 train_prompt = []
 
-# Initial prompt setup
+# train prompt
 train_prompt.append("""You are a Sustainable AI trained to suggesting the most CO2 efficient Google Cloud Platform technical stack based on user usecase.
 Understand and use the following pieces of context to answer the question at the end. Think step-by-step and then answer. Always explain why you are answering the question the way you are.
 """)
@@ -81,19 +80,26 @@ safety_settings = {
     generative_models.HarmCategory.HARM_CATEGORY_HARASSMENT: generative_models.HarmBlockThreshold.BLOCK_ONLY_HIGH,
 }
 
-
-
-# LLM Model
+#LLM MODEL
 def generate_response(prompt):
-    # Placeholder function, replace with actual model call
     responses = model.generate_content(
         prompt,
         generation_config=generation_config,
         safety_settings=safety_settings,
         stream=False    
     )
-    return responses.text 
+    return responses.text  
 
+def upload_to_gcs(file_paths):
+    storage_client = storage.Client()
+    bucket = storage_client.bucket(bucket_name)
+    
+    for file_path in file_paths:
+        file_name = os.path.basename(file_path)
+        blob = bucket.blob(f"pdf_files/{file_name}")
+        blob.upload_from_filename(file_path)
+        
+    return [f"gs://{bucket_name}/pdf_files/{os.path.basename(path)}" for path in file_paths]
 
 
 
@@ -104,10 +110,22 @@ def generate_response(prompt):
 import gradio as gr
 import socket
 
-def main_gradio(user_prompt):
-    train_prompt = "Predefined training prompt or context information here."  # Adjust as needed
-    combined_prompt = train_prompt + " " + user_prompt
+
+def main_gradio(user_prompt, uploaded_files):
+    user_prompt_list=[]
+    user_prompt_list=user_prompt_list+[user_prompt]
+    combined_prompt = train_prompt+ user_prompt_list
+    
+    if uploaded_files:
+        file_paths = [file.name for file in uploaded_files]
+        pdf_uris = upload_to_gcs(file_paths)
+
+        for i in pdf_uris:
+            combined_prompt = combined_prompt + [Part.from_uri(mime_type="application/pdf", uri=i)]
+        
+    print(combined_prompt)
     output_text = generate_response(combined_prompt)
+
     return output_text
 
 def find_free_port():
@@ -122,15 +140,18 @@ print(f"Using free port: {port}")
 
 def gradio_ui():
     with gr.Blocks() as demo:
-        gr.Markdown("### Enter your test prompt")
-        user_prompt = gr.Textbox(label="Test Prompt", placeholder="Enter your test prompt here...")
-        submit_button = gr.Button("Generate Response")
-        output_text = gr.Textbox(label="Output", placeholder="Output will appear here...")
+        gr.Markdown("### Enter your test prompt and upload PDF files")
+        with gr.Row():
+            user_prompt = gr.Textbox(label="Test Prompt", placeholder="Enter your test prompt here...")
+            file_input = gr.UploadButton(label="Upload PDF Files", file_types=["pdf"], file_count="multiple")
 
-        submit_button.click(fn=main_gradio, inputs=user_prompt, outputs=output_text)
+        submit_button = gr.Button("Generate Response")
+        output_markdown = gr.Markdown(label="Output")
+
+        submit_button.click(fn=main_gradio, inputs=[user_prompt, file_input], outputs=output_markdown)
 
     return demo
 
 if __name__ == "__main__":
     interface = gradio_ui()
-    interface.launch(server_name="0.0.0.0", server_port=port)  # Use the dynamically found free port
+    interface.launch(server_name="0.0.0.0", server_port=port) 
