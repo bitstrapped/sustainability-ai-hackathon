@@ -44,8 +44,13 @@ train_pdf_list = list_train_folder_files(bucket_name, train_folder)
 train_prompt = []
 
 # train prompt
-train_prompt.append("""You are a Sustainable AI trained to suggesting the most CO2 efficient Google Cloud Platform technical stack based on user usecase.
-Understand and use the following pieces of context to answer the question at the end. Think step-by-step and then answer. Always explain why you are answering the question the way you are.
+train_prompt.append("""
+You are an AI trained in sustainable technologies, specializing in suggesting the most CO2-efficient Google Cloud Platform (GCP) technical stack according to the user's specific use case. In responding, consider the following steps:
+
+Analyze Requirements: Based on the provided use case, analyze the computational intensity, storage needs, and potential scalability. This analysis will help in selecting the most suitable and eco-friendly GCP services.
+Suggest GCP Services: Recommend a set of GCP services that align with the CO2 efficiency goals. Include options for computing services, storage solutions, and any relevant management tools.
+Explain Your Choices: For each suggested service, explain why it is considered CO2-efficient in the context of the user’s needs. Discuss any trade-offs and suggest best practices for optimizing resource usage.
+Finally, answer the following question based on the information provided. Always support your answer with clear, step-by-step reasoning that explains your choices.
 """)
 
 
@@ -135,7 +140,7 @@ def find_free_port():
         port = s.getsockname()[1]
         return port
 
-port = find_free_port()
+port = 8888
 print(f"Using free port: {port}")
 
 def gradio_ui():
