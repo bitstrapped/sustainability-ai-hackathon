@@ -1,162 +1,162 @@
-from fastapi import FastAPI, HTTPException
-from utils.qa import KoraAI
-from pydantic import BaseModel
-from typing import List
+import os
+import base64
+import vertexai
+from vertexai.generative_models import GenerativeModel, Part
+import vertexai.preview.generative_models as generative_models
+from google.cloud import storage
+from google.cloud import aiplatform
 
-app = FastAPI()
-
-kora = KoraAI("faisals-ml-playground", "us-central1")
-
-
-class NamespaceData(BaseModel):
-    namespace: str
-    gcs: str
-    folder: str
+import json
+import re
+import gradio as gr
 
 
-class QuestionData(BaseModel):
-    namespace: str
-    question: str
+project_id = "ds-ml-pod"
+location = "us-central1"
+bucket_name = "sustainable-ai"
 
 
-# Define Document model
-class Document(BaseModel):
-    page_content: str
-    metadata: dict
+# Paths
+train_folder = 'documents/'
 
+aiplatform.init(project=project_id, location=location)
+vertexai.init(project=project_id, location=location)
 
-# Update AnswerData
-class AnswerData(BaseModel):
-    query: str
-    result: str
-    source_documents: List[Document]
-
-
-class EvaluateAnswer(BaseModel):
-    namespace: str
-    question: str
-    expected: str
-    answer: str
-
-
-class EvaluateMetric(BaseModel):
-    question: str
-    expected: str
-    answer: str
-    text: str
-
-class SummarizeText(BaseModel):
-    namespace: str
-    url: str
-    type: str
-
-class GenerateText(BaseModel):
-    prompt: str
-
-
-@app.post("/add-namespace/")
-async def add_namespace(data: NamespaceData):
-    try:
-        kora.add_namespace(data.gcs, data.namespace, data.folder)
-        return {"status": "Namespace added successfully"}
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
-
-
-@app.get("/train/{namespace}")
-async def train(namespace: str):
-    try:
-        kora.train(namespace)
-        return {"status": "Training successful for namespace: " + namespace}
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+# Read example ip and op pdfs from train folder
+def list_train_folder_files(bucket, train_folder):
+    storage_client = storage.Client()
+    bucket = storage_client.bucket(bucket_name)
+    train_pdfs = []
     
-@app.get("/get-namespace/")
-async def get_namespaces():
-    try:
-        namespaces =  kora.get_namespaces()
-        return namespaces
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+    blobs = bucket.list_blobs(prefix=train_folder)
+    for blob in blobs:
+        if blob.name.endswith('.pdf'):
+            train_pdfs.append(blob.name)
+       
+    return train_pdfs
+
+
+# Prompt
+
+# List PDF files and find corresponding JSON output files
+train_pdf_list = list_train_folder_files(bucket_name, train_folder)
+
+train_prompt = []
+
+# train prompt
+train_prompt.append("""
+You are an AI trained in sustainable technologies, specializing in suggesting the most CO2-efficient Google Cloud Platform (GCP) technical stack according to the user's specific use case. In responding, consider the following steps:
+
+Analyze Requirements: Based on the provided use case, analyze the computational intensity, storage needs, and potential scalability. This analysis will help in selecting the most suitable and eco-friendly GCP services.
+Suggest GCP Services: Recommend a set of GCP services that align with the CO2 efficiency goals. Include options for computing services, storage solutions, and any relevant management tools.
+Explain Your Choices: For each suggested service, explain why it is considered CO2-efficient in the context of the user’s needs. Discuss any trade-offs and suggest best practices for optimizing resource usage.
+Finally, answer the following question based on the information provided. Always support your answer with clear, step-by-step reasoning that explains your choices.
+""")
+
+
+# Prepare train prompt
+for train_pdf in train_pdf_list:
+    train_pdf_uri = f"gs://{bucket_name}/{train_pdf}"
+
+
+    # Append dynamically generated content to the prompt string
+    train_prompt += [
+        "Context Input Text:  ",
+        Part.from_uri(mime_type="application/pdf", uri=train_pdf_uri)
+    ]
+
+# -----------------------------
+
+# Gemini 1.5 model
+
+vertexai.init(project=project_id, location=location)
+model = GenerativeModel("gemini-1.5-pro-preview-0409")
+
+generation_config = {
+    "max_output_tokens": 8192,
+    "temperature": 0.2,
+    "top_p": 0.4,
+}
+
+safety_settings = {
+    generative_models.HarmCategory.HARM_CATEGORY_HATE_SPEECH: generative_models.HarmBlockThreshold.BLOCK_ONLY_HIGH,
+    generative_models.HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: generative_models.HarmBlockThreshold.BLOCK_ONLY_HIGH,
+    generative_models.HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT: generative_models.HarmBlockThreshold.BLOCK_ONLY_HIGH,
+    generative_models.HarmCategory.HARM_CATEGORY_HARASSMENT: generative_models.HarmBlockThreshold.BLOCK_ONLY_HIGH,
+}
+
+#LLM MODEL
+def generate_response(prompt):
+    responses = model.generate_content(
+        prompt,
+        generation_config=generation_config,
+        safety_settings=safety_settings,
+        stream=False    
+    )
+    return responses.text  
+
+def upload_to_gcs(file_paths):
+    storage_client = storage.Client()
+    bucket = storage_client.bucket(bucket_name)
     
-@app.get("/delete-namespace/{namespace}")
-async def delete_namespaces(namespace: str):
-    try:
-        namespaces =  kora.delete_namespaces(namespace)
-        return namespaces
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+    for file_path in file_paths:
+        file_name = os.path.basename(file_path)
+        blob = bucket.blob(f"pdf_files/{file_name}")
+        blob.upload_from_filename(file_path)
+        
+    return [f"gs://{bucket_name}/pdf_files/{os.path.basename(path)}" for path in file_paths]
 
 
-@app.post("/ask/")
-async def ask_question(data: QuestionData):
-    try:
-        answer = kora.question(data.namespace, data.question)
-        return AnswerData(**answer) 
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
 
-
-@app.post("/summarize/")
-async def summarize_text(data: SummarizeText):
-    try:
-        summary = kora.summarize(data.namespace, data.url, data.type)
-        return summary
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
     
-@app.post("/generate-text/")
-async def generate_text(data: GenerateText):
-    try:
-        generated = kora.generate_text(data.prompt)
-        return generated
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+'''
+---------  GRADIO UI -----
+'''
+import gradio as gr
+import socket
 
 
-#feedbac
-class FeedbackData(BaseModel):
-    namespace: str
-    question: str
-    original_answer: str
-    feedback_type: str 
-    value: str  
+def main_gradio(user_prompt, uploaded_files):
+    user_prompt_list=[]
+    user_prompt_list=user_prompt_list+[user_prompt]
+    combined_prompt = train_prompt+ user_prompt_list
+    
+    if uploaded_files:
+        file_paths = [file.name for file in uploaded_files]
+        pdf_uris = upload_to_gcs(file_paths)
 
+        for i in pdf_uris:
+            combined_prompt = combined_prompt + [Part.from_uri(mime_type="application/pdf", uri=i)]
+        
+    print(combined_prompt)
+    output_text = generate_response(combined_prompt)
 
-@app.post("/feedback/")
-async def submit_feedback(data: FeedbackData):
-    try:
-        if data.feedback_type == "thumbs":
-            if data.value not in ["up", "down"]:
-                raise ValueError("Invalid value for thumbs feedback")
+    return output_text
 
-        elif data.feedback_type == "score":
+def find_free_port():
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.bind(("", 0))
+        s.listen(1)
+        port = s.getsockname()[1]
+        return port
 
-            if int(data.value) not in list(range(1, 11)):
-                raise ValueError("Invalid score value")
+port = 8888
+print(f"Using free port: {port}")
 
-        elif data.feedback_type == "rewrite":
-            return {"status": "Answer rewritten successfully",
-                    "answer": kora.rewrite(data.namespace, data.original_answer)}
+def gradio_ui():
+    with gr.Blocks() as demo:
+        gr.Markdown("### Enter your test prompt and upload PDF files")
+        with gr.Row():
+            user_prompt = gr.Textbox(label="Test Prompt", placeholder="Enter your test prompt here...")
+            file_input = gr.UploadButton(label="Upload PDF Files", file_types=["pdf"], file_count="multiple")
 
-        elif data.feedback_type == "error_category":
-            valid_categories = ["misunderstanding",
-                                "hallucination", "incorrect evaluation"]
-            if data.value not in valid_categories:
-                raise ValueError("Invalid error category")
+        submit_button = gr.Button("Generate Response")
+        output_markdown = gr.Markdown(label="Output")
 
-        else:
-            raise ValueError("Invalid feedback type")
+        submit_button.click(fn=main_gradio, inputs=[user_prompt, file_input], outputs=output_markdown)
 
-        return {"status": "Feedback submitted successfully"}
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+    return demo
 
-
-@app.post("/evaluate/")
-async def ask_question(data: EvaluateAnswer):
-    try:
-        answer = kora.evaluate_answer(data.namespace, data.question, data.expected, data.answer)
-        return EvaluateMetric(**answer)
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+if __name__ == "__main__":
+    interface = gradio_ui()
+    interface.launch(server_name="0.0.0.0", server_port=port) 
