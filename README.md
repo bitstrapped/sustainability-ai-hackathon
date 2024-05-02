@@ -1,5 +1,5 @@
-# Local Setup Guide for Kora
-This repository contains the code for setting up and running Kora locally.
+# Sustainability AI hackathon
+This repository contains the code for the AI hackathon topic -"Give a less CO2 emission based gcp solution"
 
 ### Setting Up the Virtual Environment
 
@@ -28,42 +28,16 @@ pip install -r requirements.txt
 
 ### Google Cloud Platform (GCP) Setup
 
-1. Create a bucket in Google Cloud Storage following the guidelines below:
+1. Project name: ds-ml-pod
+2. Bucket name: sustainable-ai
+    2.1. Inside the ```bucket```, there are 2 folders: <br>
+    First is   ```documents``` which contain the training documents 
+    Second is ```pdf files```  which are the pdf files being uploaded dynamically through the UI. 
 
-![Bucket naming convention](/assets/one.png)
-
-> Note the bucket must be name as ```{project-id}.me.embeddings```
-
-2. Inside the ```{project-id}.me.embeddings bucket```, create a folder named ```init_index```. Upload the ```embeddings_0.json``` file located in the Kora folder to this init_index folder.
-
-
-2.  Create a second bucket in Google Cloud Storage for storing your files : 
-
-
-![Bucket naming convention](/assets/two.png)
-
-> Note the bucket must be name as ```{project-id}.training.docs```
-
-**Update Project Details in the Code**
-
-3. Open the ```KORA > main.py``` file and modify the project ID and region in the following code:
-
-```
-kora = KoraAI("Project id", "Region")
-
-```
-Replace "Project id" and "Region" with your GCP project ID and region details.
 
 
 ### Running the project locally 
 
-OOnce you've completed the above steps, you can run the project locally using the following command:
+Once you've completed the above steps, you can run the project locally using the following command:
 
-
-``` uvicorn main:app --host 0.0.0.0 --reload ```
-
-After running the command, access Kora at ```localhost:8000```.
-
-You're all set up! Enjoy using Kora locally.
-
-
+python abhishek_main.py
