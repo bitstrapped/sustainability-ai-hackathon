@@ -11,6 +11,8 @@ import re
 import gradio as gr
 
 
+
+
 project_id = "ds-ml-pod"
 location = "us-central1"
 bucket_name = "sustainable-ai"
@@ -18,6 +20,8 @@ bucket_name = "sustainable-ai"
 
 # Paths
 train_folder = 'documents/'
+input_folder= 'user_files/'
+output_folder= 'output_solution/'
 
 aiplatform.init(project=project_id, location=location)
 vertexai.init(project=project_id, location=location)
@@ -95,18 +99,29 @@ def generate_response(prompt):
     )
     return responses.text  
 
-def upload_to_gcs(file_paths):
+def upload_to_gcs(file_paths, folder):
     storage_client = storage.Client()
     bucket = storage_client.bucket(bucket_name)
     
     for file_path in file_paths:
         file_name = os.path.basename(file_path)
-        blob = bucket.blob(f"pdf_files/{file_name}")
+        blob = bucket.blob(f"{folder}{file_name}")
         blob.upload_from_filename(file_path)
         
-    return [f"gs://{bucket_name}/pdf_files/{os.path.basename(path)}" for path in file_paths]
+    return [f"gs://{bucket_name}/{folder}{os.path.basename(path)}" for path in file_paths]
 
 
+
+
+def upload_output_to_gcs(output_text, output_folder):
+
+    # Create a text file from output text
+    text_output_path = "output.txt"
+    with open(text_output_path, "w") as text_file:
+        text_file.write(output_text)
+    
+    # Upload the text file to GCS
+    return upload_to_gcs([text_output_path], output_folder)[0]
 
     
 '''
@@ -123,7 +138,7 @@ def main_gradio(user_prompt, uploaded_files):
     
     if uploaded_files:
         file_paths = [file.name for file in uploaded_files]
-        pdf_uris = upload_to_gcs(file_paths)
+        pdf_uris = upload_to_gcs(file_paths, input_folder)
 
         for i in pdf_uris:
             combined_prompt = combined_prompt + [Part.from_uri(mime_type="application/pdf", uri=i)]
@@ -131,7 +146,10 @@ def main_gradio(user_prompt, uploaded_files):
     print(combined_prompt)
     output_text = generate_response(combined_prompt)
 
-    return output_text
+    # Additional
+    output_pdf_uri = upload_output_to_gcs(output_text, output_folder)
+
+    return output_text, output_pdf_uri
 
 def find_free_port():
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
@@ -152,8 +170,9 @@ def gradio_ui():
 
         submit_button = gr.Button("Generate Response")
         output_markdown = gr.Markdown(label="Output")
+        output_pdf_link = gr.Markdown()
 
-        submit_button.click(fn=main_gradio, inputs=[user_prompt, file_input], outputs=output_markdown)
+        submit_button.click(fn=main_gradio, inputs=[user_prompt, file_input], outputs=[output_markdown, output_pdf_link])
 
     return demo
 

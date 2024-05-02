@@ -14,7 +14,7 @@ RUN pip install -r requirements.txt
 COPY . .
 
 # Make port 7860 available to the world outside this container
-EXPOSE 57997
+EXPOSE 8888
 
 # Run main.py when the container launches
-CMD ["python", "./abhishek_main.py"]
+CMD ["python", "./main.py"]
