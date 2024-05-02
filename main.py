@@ -6,9 +6,9 @@ import vertexai.preview.generative_models as generative_models
 from google.cloud import storage
 from google.cloud import aiplatform
 
-import json
-import re
 import gradio as gr
+
+
 
 
 project_id = "ds-ml-pod"
@@ -18,6 +18,8 @@ bucket_name = "sustainable-ai"
 
 # Paths
 train_folder = 'documents/'
+input_folder= 'user_files/'
+output_folder= 'output_solution/'
 
 aiplatform.init(project=project_id, location=location)
 vertexai.init(project=project_id, location=location)
@@ -95,68 +97,75 @@ def generate_response(prompt):
     )
     return responses.text  
 
-def upload_to_gcs(file_paths):
+def upload_to_gcs(file_paths, folder):
     storage_client = storage.Client()
     bucket = storage_client.bucket(bucket_name)
     
     for file_path in file_paths:
         file_name = os.path.basename(file_path)
-        blob = bucket.blob(f"pdf_files/{file_name}")
+        blob = bucket.blob(f"{folder}{file_name}")
         blob.upload_from_filename(file_path)
         
-    return [f"gs://{bucket_name}/pdf_files/{os.path.basename(path)}" for path in file_paths]
+    return [f"gs://{bucket_name}/{folder}{os.path.basename(path)}" for path in file_paths]
 
-
+def upload_output_to_gcs(output_text, output_folder):
+    # Create a text file from output text
+    text_output_path = "output.md"
+    with open(text_output_path, "w") as text_file:
+        text_file.write(output_text)
+    
+    # Upload the text file to GCS
+    file_uri = upload_to_gcs([text_output_path], output_folder)
+    return file_uri[0], text_output_path
 
     
 '''
 ---------  GRADIO UI -----
 '''
-import gradio as gr
-import socket
 
 
 def main_gradio(user_prompt, uploaded_files):
-    user_prompt_list=[]
-    user_prompt_list=user_prompt_list+[user_prompt]
-    combined_prompt = train_prompt+ user_prompt_list
+    user_prompt_list = [user_prompt]
+    combined_prompt = train_prompt + user_prompt_list
     
     if uploaded_files:
         file_paths = [file.name for file in uploaded_files]
-        pdf_uris = upload_to_gcs(file_paths)
+        pdf_uris = upload_to_gcs(file_paths, input_folder)
 
-        for i in pdf_uris:
-            combined_prompt = combined_prompt + [Part.from_uri(mime_type="application/pdf", uri=i)]
-        
-    print(combined_prompt)
+        for uri in pdf_uris:
+            combined_prompt += [Part.from_uri(mime_type="application/pdf", uri=uri)]
+    
     output_text = generate_response(combined_prompt)
+    output_pdf_uri, local_file_path = upload_output_to_gcs(output_text, output_folder)
+    download_button = gr.DownloadButton(label=f"Download Report", value=local_file_path, visible=True)
 
-    return output_text
+    return output_text, output_pdf_uri, download_button
 
-def find_free_port():
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-        s.bind(("", 0))
-        s.listen(1)
-        port = s.getsockname()[1]
-        return port
-
-port = 8888
-print(f"Using free port: {port}")
+def download_file():
+    # This function will return the path to be downloaded
+    return [gr.DownloadButton(label="Download Report", visible=False)]
 
 def gradio_ui():
     with gr.Blocks() as demo:
-        gr.Markdown("### Enter your test prompt and upload PDF files")
+        gr.Markdown("### Enter your application description and upload PDF files")
         with gr.Row():
-            user_prompt = gr.Textbox(label="Test Prompt", placeholder="Enter your test prompt here...")
+            user_prompt = gr.Textbox(label="Project Details", placeholder="Enter your project details here...")
             file_input = gr.UploadButton(label="Upload PDF Files", file_types=["pdf"], file_count="multiple")
 
         submit_button = gr.Button("Generate Response")
+        download_button = gr.DownloadButton(label="Download Report", visible=False)
+
         output_markdown = gr.Markdown(label="Output")
+        output_pdf_link = gr.Markdown()
 
-        submit_button.click(fn=main_gradio, inputs=[user_prompt, file_input], outputs=output_markdown)
 
+        submit_button.click(fn=main_gradio, inputs=[user_prompt, file_input], outputs=[output_markdown, output_pdf_link, download_button])
+        download_button.click(fn=download_file, inputs=[], outputs=[download_button])
     return demo
 
+
+
+port = 8080
 if __name__ == "__main__":
     interface = gradio_ui()
     interface.launch(server_name="0.0.0.0", server_port=port) 
