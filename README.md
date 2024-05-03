@@ -1,43 +1,31 @@
-# Sustainability AI hackathon
-This repository contains the code for the AI hackathon topic -"Give a less CO2 emission based gcp solution"
+# 🌿 Sustainability AI hackathon
+This repository contains the codebase for the Google AI hackathon on the topic -"Sustainability AI". It aims to analyze documents and images related to software projects to assess potential improvements to reduce environmental impacts and carbon footprints. It generates comprehensive reports that highlight areas where CO2 emissions can be reduced and suggests actionable steps to enhance sustainability.
 
-### Setting Up the Virtual Environment
+## 🌿 Code Files
 
-1. Begin by installing the virtual environment package by running:
+- **main.py**: Contains the main codebase. 
+    - It takes in the user description and uploaded files dynamically
+    - Saves them temporarily on Google Cloud Storage
+    - Calls the **Gemini 1.5 Pro Preview** model API
+    - Passes the prompt and the files (including PDF or Image files) through GCS to Gemini API
+    - Generates the output solution
 
-```
-pip install virtualenv
-```
-2. Create a Python virtual environment at the root directory of the project:
+- **Dockerfile**: To containerize the code.
+    - Exposed port is 8080
 
-``` 
-python<version> -m venv <virtual-environment-name> (e.g python3.8 -m venv env) 
-```
+### 🌿 Running the project locally 
 
-3. Activate the virtual environment:
-
-```
-source <virtual-environment-name>/bin/activate
-```
-
-4. Install required libraries:
-
+- Create a virtual env and install python=3.12.0
+- Install required libraries:
 ```
 pip install -r requirements.txt
 ```
+- Once you've completed the above steps, you can run the project locally using the following command:
+```
+python main.py
+```
+- Click on the server link generated in the terminal which will redirect you to the UI
 
-### Google Cloud Platform (GCP) Setup
+### 🌿 Remote Endpoint
 
-1. Project name: ds-ml-pod
-2. Bucket name: sustainable-ai
-    2.1. Inside the ```bucket```, there are 2 folders: <br>
-    First is   ```documents``` which contain the training documents 
-    Second is ```pdf files```  which are the pdf files being uploaded dynamically through the UI. 
-
-
-
-### Running the project locally 
-
-Once you've completed the above steps, you can run the project locally using the following command:
-
-python abhishek_main.py
+Interact with the Gradio UI app which is deployed on Google Cloud Run: https://sustainability-ai-o3no33v6yq-uc.a.run.app
